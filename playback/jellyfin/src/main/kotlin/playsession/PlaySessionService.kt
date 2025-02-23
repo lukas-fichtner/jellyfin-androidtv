@@ -40,11 +40,12 @@ class PlaySessionService(
 	}
 
 	private val MediaConversionMethod.playMethod
-		get() = when (this) {
+		/*get() = when (this) {
 			MediaConversionMethod.None -> PlayMethod.DIRECT_PLAY
 			MediaConversionMethod.Remux -> PlayMethod.DIRECT_STREAM
 			MediaConversionMethod.Transcode -> PlayMethod.TRANSCODE
-		}
+		}*/
+		get() = PlayMethod.DIRECT_STREAM;
 
 	private val RepeatMode.remoteRepeatMode
 		get() = when (this) {
