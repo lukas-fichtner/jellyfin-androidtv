@@ -41,6 +41,9 @@ class HomeFragmentLiveTVRow(
 		}
 
 		rowsAdapter.add(ListRow(header, adapter))
+		
+		// open Live TV Guide by default - ugly temp solution
+		navigationRepository.navigate(Destinations.liveTvGuide)
 	}
 
 	override fun onItemClicked(itemViewHolder: Presenter.ViewHolder?, item: Any?, rowViewHolder: RowPresenter.ViewHolder?, row: Row?) {
