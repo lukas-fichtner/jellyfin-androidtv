@@ -14,8 +14,11 @@ class PlayPauseAction(context: Context) : PlaybackControlsRow.PlayPauseAction(co
 			}
 
 			INDEX_PAUSE -> {
-				videoPlayerAdapter.pause()
-				this.index = INDEX_PLAY
+				//
+				// Hotfix to disable pause button
+				//
+				//videoPlayerAdapter.pause()
+				this.index = INDEX_PAUSE
 			}
 
 			else -> {}
