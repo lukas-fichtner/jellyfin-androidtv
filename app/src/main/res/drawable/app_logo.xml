@@ -13,10 +13,10 @@
                 android:startY="30"
                 android:tileMode="clamp">
                 <item
-                    android:color="#F2364D"
+                    android:color="#00FF99"
                     android:offset="0" />
                 <item
-                    android:color="#FDC92F"
+                    android:color="#003322"
                     android:offset="1" />
             </gradient>
         </aapt:attr>
@@ -32,10 +32,10 @@
                 android:startY="30"
                 android:tileMode="clamp">
                 <item
-                    android:color="#F2364D"
+                    android:color="#00FF99"
                     android:offset="0" />
                 <item
-                    android:color="#FDC92F"
+                    android:color="#003322"
                     android:offset="1" />
             </gradient>
         </aapt:attr>
