@@ -32,8 +32,10 @@ android {
 	}
 
 	buildTypes {
+		// replace release with .livetv - ugly temp solution
 		val release by getting {
 			isMinifyEnabled = false
+			applicationIdSuffix = ".livetv"
 
 			// Set package names used in various XML files
 			resValue("string", "app_id", namespace!!)
@@ -41,7 +43,7 @@ android {
 			resValue("string", "app_search_suggest_intent_data", "content://${namespace}.content/intent")
 
 			// Set flavored application name
-			resValue("string", "app_name", "@string/app_name_release")
+			resValue("string", "app_name", "Jellyfin LiveTV")
 
 			buildConfigField("boolean", "DEVELOPMENT", "false")
 		}
