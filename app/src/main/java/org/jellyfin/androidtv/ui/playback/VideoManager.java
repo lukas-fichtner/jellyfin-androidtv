@@ -28,13 +28,15 @@ import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DefaultDataSource;
-import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.util.EventLogger;
 import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.extractor.ExtractorsFactory;
 import androidx.media3.extractor.ts.TsExtractor;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.CaptionStyleCompat;
@@ -55,6 +57,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+import io.github.peerless2012.ass.media.AssHandler;
+import io.github.peerless2012.ass.media.kt.AssPlayerKt;
+import io.github.peerless2012.ass.media.parser.AssSubtitleParserFactory;
+import io.github.peerless2012.ass.media.type.AssRenderType;
 import timber.log.Timber;
 
 @OptIn(markerClass = UnstableApi.class)
@@ -77,20 +83,35 @@ public class VideoManager {
     public boolean isContracted = false;
 
     private final UserPreferences userPreferences = KoinJavaComponent.get(UserPreferences.class);
+    private final HttpDataSource.Factory exoPlayerHttpDataSourceFactory = KoinJavaComponent.get(HttpDataSource.Factory.class);
 
     public VideoManager(@NonNull Activity activity, @NonNull View view, @NonNull PlaybackOverlayFragmentHelper helper) {
         mActivity = activity;
         _helper = helper;
         nightModeEnabled = userPreferences.get(UserPreferences.Companion.getAudioNightMode());
 
-        mExoPlayer = configureExoplayerBuilder(activity).build();
+        boolean assDirectPlay = userPreferences.get(UserPreferences.Companion.getAssDirectPlay());
+        if (assDirectPlay) {
+            AssHandler assHandler = new AssHandler(AssRenderType.LEGACY);
+            mExoPlayer = configureExoplayerBuilder(activity, assHandler).build();
+            assHandler.init(mExoPlayer);
+        } else {
+            mExoPlayer = configureExoplayerBuilder(activity, null).build();
+        }
 
         if (userPreferences.get(UserPreferences.Companion.getDebuggingEnabled())) {
             mExoPlayer.addAnalyticsListener(new EventLogger());
         }
 
         // Volume normalisation (audio night mode).
-        if (nightModeEnabled) enableAudioNightMode(mExoPlayer.getAudioSessionId());
+        if (nightModeEnabled) {
+            mExoPlayer.addAnalyticsListener(new AnalyticsListener() {
+                @Override
+                public void onAudioSessionIdChanged(AnalyticsListener.EventTime eventTime, int audioSessionId) {
+                    enableAudioNightMode(audioSessionId);
+                }
+            });
+        }
 
         mExoPlayerView = view.findViewById(R.id.exoPlayerView);
         mExoPlayerView.setPlayer(mExoPlayer);
@@ -183,7 +204,7 @@ public class VideoManager {
      * @param context The associated context
      * @return A configured builder for Exoplayer
      */
-    private ExoPlayer.Builder configureExoplayerBuilder(Context context) {
+    private ExoPlayer.Builder configureExoplayerBuilder(Context context, AssHandler assHandler) {
         ExoPlayer.Builder exoPlayerBuilder = new ExoPlayer.Builder(context);
         DefaultRenderersFactory defaultRendererFactory = new DefaultRenderersFactory(context);
         defaultRendererFactory.setEnableDecoderFallback(true);
@@ -201,14 +222,18 @@ public class VideoManager {
         exoPlayerBuilder.setTrackSelector(trackSelector);
 
         DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory().setTsExtractorTimestampSearchBytes(TsExtractor.DEFAULT_TIMESTAMP_SEARCH_BYTES * 3);
-        DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory();
-        // Note: default values from Kotlin SDK 1.5
-        httpDataSourceFactory.setConnectTimeoutMs(6 * 1000);
-        httpDataSourceFactory.setReadTimeoutMs(30 * 1000);
-        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpDataSourceFactory);
-        exoPlayerBuilder.setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory));
         extractorsFactory.setConstantBitrateSeekingEnabled(true);
         extractorsFactory.setConstantBitrateSeekingAlwaysEnabled(true);
+        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, exoPlayerHttpDataSourceFactory);
+        if (assHandler != null) {
+            AssSubtitleParserFactory assSubtitleParserFactory = new AssSubtitleParserFactory(assHandler);
+            ExtractorsFactory assExtractorsFactory = AssPlayerKt.withAssMkvSupport(extractorsFactory, assSubtitleParserFactory, assHandler);
+            DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory, assExtractorsFactory);
+            mediaSourceFactory.setSubtitleParserFactory(assSubtitleParserFactory);
+            exoPlayerBuilder.setMediaSourceFactory(mediaSourceFactory);
+        } else {
+            exoPlayerBuilder.setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory));
+        }
 
         return exoPlayerBuilder;
     }
@@ -621,6 +646,10 @@ public class VideoManager {
     }
 
     private void enableAudioNightMode(int audioSessionId) {
+        Timber.i("Enabling audio night mode for session %d", audioSessionId);
+        if (mEqualizer != null) mEqualizer.release();
+        if (mDynamicsProcessing != null) mDynamicsProcessing.release();
+
         // Equaliser variables.
         short eqDefault = (short) 0;
         short eqSmallBoost = (short) 2;

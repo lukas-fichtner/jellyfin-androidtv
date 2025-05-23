@@ -3,9 +3,10 @@ package org.jellyfin.androidtv.ui
 import android.content.Context
 import android.util.AttributeSet
 import android.widget.ImageView
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,26 +28,29 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.ProvideTextStyle
-import androidx.tv.material3.Surface
-import androidx.tv.material3.Text
 import org.jellyfin.androidtv.R
+import org.jellyfin.androidtv.ui.base.JellyfinTheme
+import org.jellyfin.androidtv.ui.base.ProvideTextStyle
+import org.jellyfin.androidtv.ui.base.Text
+import org.jellyfin.androidtv.ui.base.button.ButtonBase
 import org.jellyfin.androidtv.ui.composable.AsyncImage
 import org.jellyfin.androidtv.ui.composable.rememberPlayerProgress
 import org.jellyfin.androidtv.ui.composable.rememberQueueEntry
 import org.jellyfin.androidtv.ui.navigation.Destinations
 import org.jellyfin.androidtv.ui.navigation.NavigationRepository
-import org.jellyfin.androidtv.util.ImageHelper
+import org.jellyfin.androidtv.util.apiclient.albumPrimaryImage
+import org.jellyfin.androidtv.util.apiclient.getUrl
+import org.jellyfin.androidtv.util.apiclient.itemImages
+import org.jellyfin.androidtv.util.apiclient.parentImages
 import org.jellyfin.playback.core.PlaybackManager
 import org.jellyfin.playback.jellyfin.queue.baseItem
 import org.jellyfin.playback.jellyfin.queue.baseItemFlow
+import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.model.api.ImageType
 import org.koin.compose.koinInject
 
@@ -54,9 +58,9 @@ import org.koin.compose.koinInject
 fun NowPlayingComposable(
 	onFocusableChange: (focusable: Boolean) -> Unit,
 ) {
+	val api = koinInject<ApiClient>()
 	val playbackManager = koinInject<PlaybackManager>()
 	val navigationRepository = koinInject<NavigationRepository>()
-	val imageHelper = koinInject<ImageHelper>()
 
 	val entry by rememberQueueEntry(playbackManager)
 	val item = entry?.run { baseItemFlow.collectAsState(baseItem) }?.value
@@ -64,87 +68,62 @@ fun NowPlayingComposable(
 
 	LaunchedEffect(item == null) { onFocusableChange(item != null) }
 
-	AnimatedVisibility(
-		visible = item != null,
-		enter = fadeIn(),
-		exit = fadeOut(),
-	) {
-		Surface(
-			onClick = { navigationRepository.navigate(Destinations.nowPlaying) },
-			colors = ClickableSurfaceDefaults.colors(
-				containerColor = colorResource(id = R.color.button_default_normal_background),
-				focusedContainerColor = colorResource(id = R.color.button_default_highlight_background),
-				contentColor = colorResource(id = R.color.button_default_normal_text),
-				focusedContentColor = colorResource(id = R.color.button_default_highlight_text),
-			),
-			scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-			shape = ClickableSurfaceDefaults.shape(
-				shape = RoundedCornerShape(4.dp),
-			),
-			modifier = Modifier
-				.widthIn(0.dp, 250.dp)
-		) {
-			Box(
+	AnimatedContent(
+		targetState = item,
+		transitionSpec = { fadeIn() togetherWith fadeOut() },
+	) { item ->
+		if (item != null) {
+			ButtonBase(
+				onClick = { navigationRepository.navigate(Destinations.nowPlaying) },
+				shape = JellyfinTheme.shapes.extraSmall,
 				modifier = Modifier
-					.align(Alignment.BottomStart)
-					.fillMaxWidth()
-					.height(1.dp)
-					.drawWithContent {
-						// Background
-						drawRect(Color.White, alpha = 0.4f)
-						// Foreground
-						drawRect(Color.White, size = size.copy(width = progress * size.width))
-					}
-			)
-
-			ProvideTextStyle(
-				value = TextStyle.Default.copy(
-					fontSize = 12.sp,
-				)
+					.widthIn(0.dp, 250.dp)
 			) {
-				Row(
-					horizontalArrangement = Arrangement.spacedBy(10.dp),
-					verticalAlignment = Alignment.CenterVertically,
+				Box(
 					modifier = Modifier
-						.padding(5.dp)
+						.align(Alignment.BottomStart)
+						.fillMaxWidth()
+						.height(1.dp)
+						.drawWithContent {
+							// Background
+							drawRect(Color.White, alpha = 0.4f)
+							// Foreground
+							drawRect(Color.White, size = size.copy(width = progress * size.width))
+						}
+				)
+
+				ProvideTextStyle(
+					value = TextStyle.Default.copy(
+						fontSize = 12.sp,
+					)
 				) {
-					val primaryImageTag = item?.imageTags?.get(ImageType.PRIMARY)
-					val (imageItemId, imageTag) = when {
-						primaryImageTag != null -> item.id to primaryImageTag
-						(item?.albumId != null && item.albumPrimaryImageTag != null) -> item.albumId to item.albumPrimaryImageTag
-						else -> null to null
-					}
-					val imageUrl = when {
-						imageItemId != null && imageTag != null -> imageHelper.getImageUrl(
-							itemId = imageItemId,
-							imageType = ImageType.PRIMARY,
-							imageTag = imageTag
+					Row(
+						horizontalArrangement = Arrangement.spacedBy(10.dp),
+						verticalAlignment = Alignment.CenterVertically,
+						modifier = Modifier
+							.padding(5.dp)
+					) {
+						val image = item.itemImages[ImageType.PRIMARY] ?: item.albumPrimaryImage ?: item.parentImages[ImageType.PRIMARY]
+
+						AsyncImage(
+							url = image?.getUrl(api),
+							blurHash = image?.blurHash,
+							placeholder = ContextCompat.getDrawable(LocalContext.current, R.drawable.ic_album),
+							aspectRatio = image?.aspectRatio ?: 1f,
+							modifier = Modifier
+								.size(35.dp)
+								.clip(RoundedCornerShape(4.dp)),
+							scaleType = ImageView.ScaleType.CENTER_CROP,
 						)
 
-						else -> null
-					}
-					val imageBlurHash = imageTag?.let { tag ->
-						item?.imageBlurHashes?.get(ImageType.PRIMARY)?.get(tag)
-					}
-
-					AsyncImage(
-						url = imageUrl,
-						blurHash = imageBlurHash,
-						placeholder = ContextCompat.getDrawable(LocalContext.current, R.drawable.ic_album),
-						aspectRatio = item?.primaryImageAspectRatio ?: 1.0,
-						modifier = Modifier
-							.size(35.dp)
-							.clip(RoundedCornerShape(4.dp)),
-						scaleType = ImageView.ScaleType.CENTER_CROP,
-					)
-
-					Column(
-						verticalArrangement = Arrangement.SpaceAround,
-					) {
-						// Name
-						Text(text = item?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
-						val artists = item?.artists ?: item?.albumArtists ?: item?.albumArtist?.let(::listOf)
-						Text(text = artists?.joinToString(", ").orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+						Column(
+							verticalArrangement = Arrangement.SpaceAround,
+						) {
+							// Name
+							Text(text = item.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+							val artists = item.artists ?: item.albumArtists ?: item.albumArtist?.let(::listOf)
+							Text(text = artists?.joinToString(", ").orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+						}
 					}
 				}
 			}
