@@ -5,7 +5,7 @@ import org.jellyfin.sdk.model.api.MediaSourceInfo
 import java.util.UUID
 
 open class AudioOptions {
-	var enableDirectPlay = false
+	var enableDirectPlay = true
 	var enableDirectStream = true
 	var itemId: UUID? = null
 	var mediaSources: List<MediaSourceInfo>? = null
