@@ -239,12 +239,16 @@ public class PlaybackController implements PlaybackControllerNotifiable {
         playbackRetries++;
         lastPlaybackError = Instant.now().toEpochMilli();
 
+        // Add more detailed logging for ExoPlayer errors
+        Timber.e("Player error encountered. Retry %d", playbackRetries);
+
         if (playbackRetries < 3) {
             if (mFragment != null)
                 Utils.showToast(mFragment.getContext(), mFragment.getString(R.string.player_error));
             Timber.i("Player error encountered - retrying");
             stop();
-            play(mCurrentPosition);
+            // Add a small delay before retrying to avoid hammering the server
+            mHandler.postDelayed(() -> play(mCurrentPosition), 1000);
         } else {
             mPlaybackState = PlaybackState.ERROR;
             if (mFragment != null) {
